@@ -1,0 +1,15 @@
+{
+  "name": "cetatenie-monitor",
+  "version": "1.0.0",
+  "description": "Monitor for cetatenie.just.ro articoulul-10-tab last link - puppeteer + nodemailer",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.4",
+    "puppeteer": "^21.0.0",
+    "express": "^4.18.2",
+    "body-parser": "^1.20.2"
+  }
+}
