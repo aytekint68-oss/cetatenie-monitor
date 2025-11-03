@@ -1,122 +1,86 @@
-// index.js
-import express from 'express';
-import bodyParser from 'body-parser';
-import fs from 'fs';
-import nodemailer from 'nodemailer';
-import puppeteer from 'puppeteer';
+import express from "express";
+import puppeteer from "puppeteer-core";
+import nodemailer from "nodemailer";
+import fs from "fs";
 
 const app = express();
-app.use(bodyParser.json());
+const PORT = process.env.PORT || 10000;
+const TARGET_URL = "https://cetatenie.just.ro/stadiu-dosar/";
+const STATE_FILE = "last_link.txt";
 
-const DATA_FILE = process.env.DATA_FILE || 'last_link.txt';
-const TARGET_URL = process.env.TARGET_URL || 'https://cetatenie.just.ro/stadiu-dosar/';
+// === SMTP ayarlarını buraya gir ===
+const transporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
+  auth: {
+    user: "aytekint68@gmail.com",
+    pass: "htvt vxtz voxa dghk"
+  }
+});
 
-// SMTP config from env
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
-const SMTP_PORT = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
-const SMTP_USER = process.env.SMTP_USER || 'aytekint68@gmail.com';
-const SMTP_PASS = process.env.SMTP_PASS || 'htvt vxtz voxa dghk';
-const MAIL_TO   = process.env.MAIL_TO || 'aytekint@hotmail.com'; // comma separated list allowed
+async function checkForChange() {
+  console.log(`[${new Date().toISOString()}] Kontrol başlıyor...`);
 
-// Helper: send email
-async function sendMail(newLink) {
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465, // true for 465, false for other ports
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS
-    }
-  });
-
-  const html = `<p>Yeni link bulundu: <a href="${newLink}" target="_blank">${newLink}</a></p>`;
-  const info = await transporter.sendMail({
-    from: `"Dosar Takip" <${SMTP_USER}>`,
-    to: MAIL_TO,
-    subject: 'Cetatenie – Yeni Link Yayınlandı',
-    html: html
-  });
-
-  return info;
-}
-
-// Main check function
-async function checkAndNotify() {
-  console.log(`[${new Date().toISOString()}] Başlıyor: ${TARGET_URL}`);
-
-  // Launch puppeteer
-  // Use no-sandbox flags which are commonly required on PaaS
   const browser = await puppeteer.launch({
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    headless: true
+    executablePath: "/usr/bin/google-chrome",
+    args: ["--no-sandbox", "--disable-setuid-sandbox"]
   });
 
-  try {
-    const page = await browser.newPage();
-    // Set a reasonable timeout
-    await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 30000 });
+  const page = await browser.newPage();
+  await page.goto(TARGET_URL, { waitUntil: "networkidle2", timeout: 60000 });
 
-    // try to get the last link inside #articolul-10-tab
-    const lastLink = await page.$$eval('#articolul-10-tab ul li a', anchors => {
-      if (!anchors || anchors.length === 0) return null;
-      return anchors[anchors.length - 1].href;
-    });
+  const link = await page.evaluate(() => {
+    const tab = document.querySelector("#articolul-10-tab ul");
+    if (!tab) return null;
+    const lis = tab.querySelectorAll("li a");
+    const last = lis[lis.length - 1];
+    return last ? last.href : null;
+  });
 
-    if (!lastLink) {
-      console.log('İstenen selector bulunamadı veya link yok.');
-      return { changed: false, message: 'selector_not_found' };
-    }
+  await browser.close();
 
-    // read old link
-    let oldLink = '';
-    if (fs.existsSync(DATA_FILE)) {
-      oldLink = fs.readFileSync(DATA_FILE, 'utf-8').trim();
-    }
+  if (!link) {
+    console.log("⚠️ Link bulunamadı!");
+    return "Link bulunamadı";
+  }
 
-    if (lastLink !== oldLink) {
-      // store new
-      fs.writeFileSync(DATA_FILE, lastLink, 'utf-8');
-      console.log('Değişiklik tespit edildi:', lastLink);
+  console.log("Bulunan link:", link);
 
-      // send email
-      if (!SMTP_USER || !SMTP_PASS || !MAIL_TO) {
-        console.log('E-posta gönderimi için SMTP bilgileri veya alıcı adresi ayarlı değil.');
-        return { changed: true, newLink: lastLink, emailSent: false };
-      }
+  let previous = null;
+  if (fs.existsSync(STATE_FILE)) previous = fs.readFileSync(STATE_FILE, "utf8");
 
-      const info = await sendMail(lastLink);
-      console.log('E-posta gönderildi:', info.messageId);
-      return { changed: true, newLink: lastLink, emailSent: true, info: info };
-    } else {
-      console.log('Değişiklik yok.');
-      return { changed: false, message: 'same' };
-    }
-  } catch (err) {
-    console.error('Hata:', err && err.message ? err.message : err);
-    throw err;
-  } finally {
-    await browser.close();
+  if (previous !== link) {
+    fs.writeFileSync(STATE_FILE, link);
+    console.log("🚨 Değişiklik tespit edildi!");
+    await sendMail(link);
+    return `Değişiklik bulundu: ${link}`;
+  } else {
+    console.log("✅ Değişiklik yok.");
+    return "Değişiklik yok.";
   }
 }
 
-// HTTP endpoint that triggers the check
-app.get('/run', async (req, res) => {
+async function sendMail(link) {
+  const info = await transporter.sendMail({
+    from: '"Cetatenie Checker" <aytekint68@gmail.com>',
+    to: "aytekint@hotmail.com",
+    subject: "Cetatenie Link Değişikliği!",
+    html: `<p>Yeni link tespit edildi:</p><p><a href="${link}">${link}</a></p>`
+  });
+  console.log("📧 E-posta gönderildi:", info.messageId);
+}
+
+// === HTTP endpoint ===
+app.get("/run", async (req, res) => {
   try {
-    const result = await checkAndNotify();
-    res.json(result);
+    const result = await checkForChange();
+    res.send(result);
   } catch (err) {
-    res.status(500).json({ error: err.toString() });
+    console.error("Hata:", err);
+    res.status(500).send("Hata: " + err.message);
   }
 });
 
-// Basic health endpoint
-app.get('/', (req, res) => {
-  res.send('Cetatenie monitor service is running.');
-});
+app.listen(PORT, () => console.log(`✅ Server çalışıyor: ${PORT}`));
 
-// Start server
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`App listening on port ${port}`);
-});
