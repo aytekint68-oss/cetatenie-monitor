@@ -1,7 +1,7 @@
 {
   "name": "cetatenie-monitor",
   "version": "1.0.0",
-  "description": "Cetățenie dosya kontrolü",
+  "description": "Cetatenie dosya kontrolü",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,6 +9,7 @@
   "dependencies": {
     "express": "^4.18.2",
     "nodemailer": "^6.9.11",
-    "puppeteer-core": "^22.6.1"
+    "puppeteer": "^20.9.0"
   }
 }
+
