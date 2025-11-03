@@ -2,6 +2,29 @@ import express from "express";
 import puppeteer from "puppeteer-core";
 import nodemailer from "nodemailer";
 import fs from "fs";
+import { execSync } from "child_process";
+
+function getChromePath() {
+  const paths = [
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable"
+  ];
+  for (const path of paths) {
+    try {
+      execSync(`test -f ${path}`);
+      return path;
+    } catch {}
+  }
+  throw new Error("Sistemde Chrome/Chromium bulunamadı!");
+}
+
+const browser = await puppeteer.launch({
+  executablePath: getChromePath(),
+  args: ["--no-sandbox", "--disable-setuid-sandbox"]
+});
+
 
 const app = express();
 const PORT = process.env.PORT || 10000;
