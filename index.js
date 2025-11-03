@@ -1,30 +1,7 @@
 import express from "express";
-import puppeteer from "puppeteer-core";
+import puppeteer from "puppeteer";
 import nodemailer from "nodemailer";
 import fs from "fs";
-import { execSync } from "child_process";
-
-function getChromePath() {
-  const paths = [
-    "/usr/bin/chromium-browser",
-    "/usr/bin/chromium",
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable"
-  ];
-  for (const path of paths) {
-    try {
-      execSync(`test -f ${path}`);
-      return path;
-    } catch {}
-  }
-  throw new Error("Sistemde Chrome/Chromium bulunamadı!");
-}
-
-const browser = await puppeteer.launch({
-  executablePath: getChromePath(),
-  args: ["--no-sandbox", "--disable-setuid-sandbox"]
-});
-
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -37,22 +14,23 @@ const transporter = nodemailer.createTransport({
   port: 465,
   secure: true,
   auth: {
-    user: "aytekint68@gmail.com",
-    pass: "htvt vxtz voxa dghk"
+    user: "aytekint68@gmail.com", // Gmail adresin
+    pass: "htvt vxtz voxa dghk" // Gmail uygulama şifren
   }
 });
 
 async function checkForChange() {
   console.log(`[${new Date().toISOString()}] Kontrol başlıyor...`);
 
+  // Puppeteer başlat
   const browser = await puppeteer.launch({
-    executablePath: "/usr/bin/google-chrome",
     args: ["--no-sandbox", "--disable-setuid-sandbox"]
   });
 
   const page = await browser.newPage();
   await page.goto(TARGET_URL, { waitUntil: "networkidle2", timeout: 60000 });
 
+  // Sayfadaki son linki bul
   const link = await page.evaluate(() => {
     const tab = document.querySelector("#articolul-10-tab ul");
     if (!tab) return null;
@@ -106,4 +84,3 @@ app.get("/run", async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`✅ Server çalışıyor: ${PORT}`));
-
